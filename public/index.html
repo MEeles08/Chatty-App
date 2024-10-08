@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatty App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="room-selection-container">
+        <h1>Select a Room</h1>
+        <form id="room-form">
+            <input id="room-input" placeholder="Enter room name..." autocomplete="off" />
+            <button type="submit">Join Room</button>
+        </form>
+    </div>
+
+    <div class="chat-container" style="display: none;">
+        <div class="chat-header">
+            <h1 id="room-name">Chat Room</h1>
+        </div>
+        <div id="chat" class="chat-box">
+            <ul id="messages"></ul>
+        </div>
+        <div id="typing-indicator" style="display: none;">User is typing...</div>
+        <form id="form" class="chat-form" action="">
+            <input id="input" class="chat-input" autocomplete="off" placeholder="Type a message..." />
+            <button class="send-btn">Send</button>
+        </form>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const roomForm = document.getElementById('room-form');
+        const roomInput = document.getElementById('room-input');
+        const roomNameDisplay = document.getElementById('room-name');
+        const chatContainer = document.querySelector('.chat-container');
+        const roomSelectionContainer = document.querySelector('.room-selection-container');
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        let currentRoom = '';
+        let currentUserId = Math.random().toString(36).substring(2, 15); // Assign a random user ID
+        let typingTimeout;
+
+        // Check if the browser supports notifications
+        if ('Notification' in window) {
+            Notification.requestPermission();
+        }
+
+        // When room is submitted, join that room
+        roomForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const room = roomInput.value.trim();
+            if (room) {
+                currentRoom = room;
+                roomNameDisplay.textContent = `Room: ${room}`;
+                roomSelectionContainer.style.display = 'none';
+                chatContainer.style.display = 'flex';
+                socket.emit('join room', room);
+            }
+        });
+
+        input.addEventListener('keypress', function(e) {
+            console.log('user typing')
+            socket.emit('user typing', { room: currentRoom, userId: currentUserId });
+        });
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (input.value) {
+                socket.emit('chat message', { room: currentRoom, message: input.value, userId: currentUserId });
+                input.value = '';
+            }
+        });
+
+        socket.on('chat message', function(data) {
+            const item = document.createElement('li');
+            item.textContent = data.message;
+            item.classList.add('message');
+            
+            // Add styling respectively
+            if (data.userId === currentUserId) {
+                item.classList.add('user');
+            } else {
+                item.classList.add('other');
+                typingIndicator.style.display = 'none';
+                // Send a notification if the message is from 
+                // another user and the window is not focused
+                if (document.hidden && Notification.permission === 'granted') {
+                    sendNotification(data.message);
+                }
+            }
+            
+            messages.appendChild(item);
+            item.scrollIntoView();
+        });
+
+        socket.on('user typing', function(data) {
+            if(data.userId !== currentUserId) {
+                typingIndicator.style.display = 'flex';
+
+                clearTimeout(typingTimeout);
+
+                typingTimeout = setTimeout(() => {
+                    typingIndicator.style.display = 'none';
+                }, 2000);
+            }
+        })
+
+        // Send a notification
+        function sendNotification(message) {
+            const notification = new Notification('New Message', {
+                body: message
+            });
+            console.log('Notifcation send');
+            notification.onclick = () => {
+                // Focus window when notifcation is clicked
+                window.focus();
+                notification.close();
+            };
+        }
+    </script>
+</body>
+</html>
